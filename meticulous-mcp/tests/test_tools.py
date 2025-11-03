@@ -162,26 +162,30 @@ def test_delete_profile_success(initialized_tools):
 
 
 def test_validate_profile_valid(initialized_tools):
-    """Test validation of valid profile."""
+    """Test validation of valid existing profile."""
     _, mock_validator = initialized_tools
     
-    profile_json = '{"name": "Test", "id": "test-id", "temperature": 90.0}'
+    mock_validator.validate.return_value = (True, [])
+    mock_validator.lint.return_value = []
+    
+    # Full existing profile with id and author_id
+    profile_json = '{"name": "Test", "id": "test-id", "author": "Test Author", "author_id": "author-id", "temperature": 90.0, "final_weight": 40.0, "stages": []}'
     result = validate_profile_tool(profile_json)
     assert result["valid"] is True
     assert len(result["errors"]) == 0
 
 
 def test_validate_profile_invalid(initialized_tools):
-    """Test validation of invalid profile."""
+    """Test validation of invalid new profile."""
     _, mock_validator = initialized_tools
-    mock_validator.validate.return_value = (False, ["Error 1", "Error 2"])
     
-    # Profile without id/author_id is treated as new profile and gets Pydantic validation
+    # Profile without id/author_id is treated as new profile and validates as ProfileCreateInput
+    # It will fail Pydantic validation and return early (doesn't run schema validation)
     profile_json = '{"name": "Test"}'
     result = validate_profile_tool(profile_json)
     assert result["valid"] is False
-    # Should have Pydantic errors (author, stages required) + schema errors
-    assert len(result["errors"]) == 4  # 2 Pydantic + 2 Schema
+    # Should only have Pydantic errors (author, stages required)
+    assert len(result["errors"]) == 2  # Only Pydantic errors
     assert any("author" in err for err in result["errors"])
     assert any("stages" in err for err in result["errors"])
 
@@ -478,32 +482,66 @@ def test_validate_profile_invalid_json(initialized_tools):
 
 
 def test_validate_profile_with_warnings(initialized_tools):
-    """Test validation with warnings."""
+    """Test validation of existing profile with warnings."""
     _, mock_validator = initialized_tools
     
     mock_validator.validate.return_value = (True, [])
     mock_validator.lint.return_value = ["Warning 1", "Warning 2"]
     
-    profile_json = '{"name": "Test", "id": "test-id", "temperature": 90.0}'
+    # Full existing profile with id and author_id
+    profile_json = '{"name": "Test", "id": "test-id", "author": "Test Author", "author_id": "author-id", "temperature": 90.0, "final_weight": 40.0, "stages": []}'
     result = validate_profile_tool(profile_json)
     assert result["valid"] is True
     assert len(result["warnings"]) == 2
 
 
 def test_validate_profile_with_errors_and_warnings(initialized_tools):
-    """Test validation with both errors and warnings."""
+    """Test validation of invalid new profile (returns early, no warnings)."""
     _, mock_validator = initialized_tools
     
-    mock_validator.validate.return_value = (False, ["Error 1"])
-    mock_validator.lint.return_value = ["Warning 1"]
-    
-    # Profile without id/author_id is treated as new profile and gets Pydantic validation
+    # Profile without id/author_id is treated as new profile and validates as ProfileCreateInput
+    # When Pydantic validation fails, it returns early without running schema validation or linting
     profile_json = '{"name": "Test"}'
     result = validate_profile_tool(profile_json)
     assert result["valid"] is False
-    # Should have Pydantic errors (author, stages required) + schema error
-    assert len(result["errors"]) == 3  # 2 Pydantic + 1 Schema
-    assert len(result["warnings"]) == 1
+    # Should only have Pydantic errors (author, stages required) - no schema validation runs
+    assert len(result["errors"]) == 2  # Only Pydantic errors
+    # No warnings because linting doesn't run when Pydantic validation fails
+    assert len(result["warnings"]) == 0
+
+
+def test_validate_profile_new_format_with_schema_errors(initialized_tools):
+    """Test validation of new profile (create_profile format) that passes Pydantic but fails schema validation."""
+    _, mock_validator = initialized_tools
+    
+    # Mock validator to return schema validation errors (e.g., pressure limit exceeded)
+    mock_validator.validate.return_value = (False, ["Stage 'Test' has pressure 16 bar which exceeds the 15 bar limit"])
+    mock_validator.lint.return_value = ["Warning about something"]
+    
+    # New profile in create_profile format (no id/author_id)
+    profile_json = '''{
+        "name": "Test Profile",
+        "author": "Test Author",
+        "temperature": 90.0,
+        "final_weight": 40.0,
+        "stages": [{
+            "name": "Test Stage",
+            "key": "stage_1",
+            "type": "pressure",
+            "dynamics_points": [[0, 16]],
+            "dynamics_over": "time",
+            "dynamics_interpolation": "linear",
+            "exit_triggers": [{"type": "time", "value": 30, "relative": false}],
+            "limits": []
+        }]
+    }'''
+    result = validate_profile_tool(profile_json)
+    assert result["valid"] is False
+    # Should have schema validation errors
+    assert len(result["errors"]) >= 1
+    assert any("15 bar limit" in err for err in result["errors"])
+    # Should have warnings from linting
+    assert len(result["warnings"]) >= 1
 
 
 def test_update_profile_success(initialized_tools):

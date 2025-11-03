@@ -671,6 +671,10 @@ def delete_profile_tool(profile_id: str) -> Dict[str, Any]:
 def validate_profile_tool(profile_json: str) -> Dict[str, Any]:
     """Validate a profile JSON against the schema.
     
+    This tool can validate both:
+    1. New profiles (using create_profile input format - without id/author_id)
+    2. Existing profiles (full profile format with id/author_id)
+    
     Args:
         profile_json: JSON string of the profile
         
@@ -680,50 +684,120 @@ def validate_profile_tool(profile_json: str) -> Dict[str, Any]:
     _ensure_initialized()
     
     import json
+    import uuid
     
     try:
         profile_dict = json.loads(profile_json)
     except json.JSONDecodeError as e:
         raise Exception(f"Invalid JSON: {e}")
     
-    # Try to validate as ProfileCreateInput (for new profiles being created)
-    # This catches issues with the input format, but only if it looks like
-    # a new profile (has author, doesn't have id/author_id from machine)
-    pydantic_errors = []
+    # Determine if this is a new profile or existing profile
     has_id = "id" in profile_dict
     has_author_id = "author_id" in profile_dict
-    is_existing_profile = has_id or has_author_id
+    is_existing_profile = has_id and has_author_id
     
     if not is_existing_profile:
-        # This looks like a new profile, so validate it as ProfileCreateInput
+        # This is a new profile in create_profile input format
+        # Validate as ProfileCreateInput first
         try:
-            ProfileCreateInput(**profile_dict)
+            profile_input = ProfileCreateInput(**profile_dict)
         except PydanticValidationError as e:
+            # Return input validation errors
+            error_details = []
             for error in e.errors():
                 field = " -> ".join(str(x) for x in error.get("loc", []))
                 msg = error.get("msg", "Validation error")
-                pydantic_errors.append(f"Input validation: {field}: {msg}")
+                error_details.append(f"{field}: {msg}")
+            
+            return {
+                "valid": False,
+                "errors": error_details,
+                "warnings": [],
+                "message": f"Profile has {len(error_details)} validation error(s)",
+            }
+        
+        # Convert to full profile format for validation
+        # Build the profile using the same logic as create_profile_tool
+        try:
+            stages = []
+            for stage_input in profile_input.stages:
+                exit_triggers = [
+                    create_exit_trigger(
+                        trigger_type=et["type"],
+                        value=et["value"],
+                        relative=et.get("relative"),
+                        comparison=et.get("comparison"),
+                    )
+                    for et in stage_input.exit_triggers
+                ]
+                
+                limits = None
+                if stage_input.limits:
+                    limits = [
+                        create_limit(limit_type=limit["type"], value=limit["value"])
+                        for limit in stage_input.limits
+                    ]
+                
+                dynamics = create_dynamics(
+                    points=stage_input.dynamics_points,
+                    over=stage_input.dynamics_over,
+                    interpolation=stage_input.dynamics_interpolation,
+                )
+                
+                stage = create_stage(
+                    name=stage_input.name,
+                    key=stage_input.key,
+                    stage_type=stage_input.stage_type,
+                    dynamics=dynamics,
+                    exit_triggers=exit_triggers,
+                    limits=limits,
+                )
+                stages.append(stage)
+            
+            variables = None
+            if profile_input.variables:
+                variables = [
+                    create_variable(
+                        name=var.name,
+                        key=var.key,
+                        var_type=var.var_type,
+                        value=var.value,
+                    )
+                    for var in profile_input.variables
+                ]
+            
+            # Create profile with temporary IDs for validation
+            profile = create_profile(
+                name=profile_input.name,
+                author=profile_input.author,
+                author_id=profile_input.author_id or str(uuid.uuid4()),
+                temperature=profile_input.temperature,
+                final_weight=profile_input.final_weight,
+                stages=stages,
+                variables=variables,
+                profile_id=str(uuid.uuid4()),  # Temporary ID for validation
+            )
+            
+            # Convert to dict for validation
+            profile_dict = profile_to_dict(profile, normalize=True)
+            
+        except Exception as e:
+            return {
+                "valid": False,
+                "errors": [f"Error building profile: {str(e)}"],
+                "warnings": [],
+                "message": "Profile has validation error(s)",
+            }
     
-    # Validate against JSON schema (for full profile validation)
-    is_valid, schema_errors = _validator.validate(profile_dict)
+    # Validate the full profile format
+    is_valid, errors = _validator.validate(profile_dict)
     warnings = _validator.lint(profile_dict)
     
-    # Combine errors
-    all_errors = []
-    if pydantic_errors:
-        all_errors.extend(pydantic_errors)
-    if schema_errors:
-        # Prefix schema errors only if we also have pydantic errors
-        if pydantic_errors:
-            all_errors.extend([f"Schema validation: {err}" for err in schema_errors])
-        else:
-            all_errors.extend(schema_errors)
-    
     return {
-        "valid": len(all_errors) == 0,
-        "errors": all_errors,
+        "valid": is_valid,
+        "errors": errors,
         "warnings": warnings,
-        "message": "Profile is valid" if len(all_errors) == 0 else f"Profile has {len(all_errors)} validation error(s)",
+        "message": "Profile is valid" if is_valid else f"Profile has {len(errors)} validation error(s)",
     }
 
 
