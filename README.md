@@ -35,7 +35,23 @@ brew install python@3.11
 - During installation, check "Add Python to PATH"
 - Verify installation: Open Command Prompt and run `python --version`
 
-### Step 2: Install Dependencies
+### Step 2: Download the Repository
+
+Download or clone the Meticulous MCP repository from GitHub:
+
+**Option 1: Clone with Git**
+```bash
+git clone https://github.com/twchad/meticulous-mcp.git
+cd meticulous-mcp
+```
+
+**Option 2: Download ZIP**
+- Visit [https://github.com/twchad/meticulous-mcp](https://github.com/twchad/meticulous-mcp)
+- Click the green "Code" button
+- Select "Download ZIP"
+- Extract the downloaded file to your preferred location
+
+### Step 3: Install Dependencies
 
 Navigate to the `meticulous-mcp` directory and install:
 
@@ -46,7 +62,7 @@ pip install -r requirements.txt
 
 **Note:** This project uses local dependencies (`pyMeticulous` and `python-sdk`). Make sure these directories are in the parent folder alongside `meticulous-mcp`.
 
-### Step 3: Configure Your MCP Client
+### Step 4: Configure Your MCP Client
 
 Add the Meticulous MCP server to your MCP client configuration.
 
@@ -118,7 +134,7 @@ Add this configuration:
 
 Edit `~/.cursor/mcp.json` (Mac) or `%APPDATA%\Cursor\mcp.json` (Windows) and add the same configuration as above.
 
-### Step 4: Test Your Setup (Optional)
+### Step 5: Test Your Setup (Optional)
 
 **Mac:**
 ```bash
@@ -151,7 +167,7 @@ Testing imports...
 ✓ All imports successful!
 ```
 
-### Step 5: Restart Your MCP Client
+### Step 6: Restart Your MCP Client
 
 - **Claude Desktop:** Quit and restart Claude Desktop
 - **Cursor:** Restart Cursor
