@@ -248,10 +248,17 @@ def run_profile(profile_id: str) -> Dict[str, Any]:
 
 
 @mcp.tool()
-def list_shot_history() -> Dict[str, Any]:
-    """List available shot history (dates)."""
+def list_shot_history(date: Optional[str] = None) -> Dict[str, Any]:
+    """List available shot history.
+    
+    If date is provided, lists the specific shot files for that date.
+    If no date is provided, lists all dates with available history.
+    
+    Args:
+        date: Date string (YYYY-MM-DD). Optional.
+    """
     _ensure_initialized()
-    return list_shot_history_tool()
+    return list_shot_history_tool(date)
 
 
 @mcp.tool()
