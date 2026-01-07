@@ -370,29 +370,31 @@ class Api:
             return APIError(status="JSON Parse Error", error=str(e))
 
     def get_last_shot_log(self) -> Union[Dict[str, Any], APIError]:
-        """Convenience method to get the absolutely latest shot log."""
-        # 1. Get dates
-        dates = self.get_history_dates()
-        if isinstance(dates, APIError):
-            return dates
-        if not dates:
-            return APIError(status="No Data", error="No history dates found")
-            
-        # Sort dates descending (names are YYYY-MM-DD so string sort works)
-        dates.sort(key=lambda x: x.name, reverse=True)
-        latest_date = dates[0].name
+        """Convenience method to get the absolutely latest shot log.
         
-        # 2. Get files for latest date
-        files = self.get_shot_files(latest_date)
-        if isinstance(files, APIError):
-            return files
-        if not files:
-            return APIError(status="No Data", error=f"No shot files found for {latest_date}")
-            
-        # Sort files descending (names are HH:MM:SS.shot.json)
-        files.sort(key=lambda x: x.name, reverse=True)
-        latest_file = files[0]
+        Uses /api/v1/history/last endpoint for efficiency.
+        """
+        url = f"{self.base_url}/api/v1/history/last"
+        response = self.session.get(url)
         
-        # 3. Fetch log
-        # Use 'url' field which includes .zst extension usually
-        return self.get_shot_log(latest_date, latest_file.url)
+        if response.status_code != 200:
+            try:
+                return TypeAdapter(APIError).validate_python(response.json())
+            except Exception:
+                 return APIError(status=str(response.status_code), error=f"Failed to fetch last log: {response.text}")
+
+        content = response.content
+        
+        # Check if it is zstd compressed (magic number 0xFD2FB528)
+        if content.startswith(b'\x28\xb5\x2f\xfd'):
+            try:
+                dctx = zstd.ZstdDecompressor()
+                content = dctx.decompress(content)
+            except zstd.ZstdError as e:
+                 return APIError(status="Decompression Error", error=str(e))
+        
+        try:
+            import json
+            return json.loads(content)
+        except json.JSONDecodeError as e:
+            return APIError(status="JSON Parse Error", error=str(e))

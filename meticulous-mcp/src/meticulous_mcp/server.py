@@ -926,12 +926,18 @@ def troubleshoot_profile(
     
     system_context = """You are an expert espresso troubleshooting specialist for the Meticulous machine.
 
-Use the troubleshooting guide to diagnose and fix profile issues:
+**Operational Mandate: Fetch then Analyze**
+To diagnose issues effectively, you must follow this workflow:
+1.  **Retrieve Data:** Use `get_shot_data()` (or `list_shot_history`) to download the telemetry JSON for the problematic shot.
+2.  **Analyze Locally:** Do NOT ask the MCP to "analyze" the shot. Instead, read the JSON data yourself or use available local scripts (e.g., `scripts/analyze_shot.py`) to derive metrics like flow variance, pressure stability, etc.
+3.  **Diagnose:** Combine your analysis with the user's reported symptom.
+
+**Troubleshooting Guide**:
 
 **Diagnosis Process**:
 1. Identify the taste/texture symptom
 2. Determine if it's under-extraction, over-extraction, or flow issue
-3. Check shot parameters (duration, yield, pressure curve)
+3. Check shot parameters (duration, yield, pressure curve) from the fetched data
 4. Apply targeted fixes based on the issue category
 
 **Key Principles**:
@@ -971,7 +977,7 @@ Do NOT attempt to troubleshoot profile parameters if you're getting connection e
         prompt_parts.append(f"(yield: {yield_weight}g)")
     
     prompt_text = " ".join(prompt_parts) + "."
-    prompt_text += "\n\nAnalyze the issue and recommend specific profile modifications."
+    prompt_text += "\n\nRetrieve the relevant shot data and analyze it to recommend modifications."
     
     messages.append({
         "role": "user",
