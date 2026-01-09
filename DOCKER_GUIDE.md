@@ -30,14 +30,13 @@ This guide explains how to build and run the Meticulous MCP server using Docker.
 
 3. **Start the server:**
    ```bash
-   docker compose up -d
+   docker compose up -d --build --wait
    ```
-
-The server will now be running on port `8080`.
+   The `--wait` flag ensures the command only finishes once the server is healthy and ready to accept connections. The server will run in the background on port `8080`.
 
 ## Verifying the Server
 
-You can check the logs to ensure it connected to your machine:
+If you didn't use the `--wait` flag, or want to see live activity, you can check the logs:
 ```bash
 docker compose logs -f
 ```
