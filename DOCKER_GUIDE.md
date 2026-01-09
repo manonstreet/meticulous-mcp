@@ -38,7 +38,25 @@ docker compose logs -f
 
 ## Integrating with Claude Desktop
 
-To use this with Claude Desktop, add the following to your `claude_desktop_config.json`:
+You can connect Claude Desktop to this server in two ways.
+
+### Option 1: SSE / HTTP (Recommended)
+This method works whether the Docker container is running locally or on a remote machine on your network.
+
+Replace `<HOST_IP>` with the IP address or hostname of the machine running the container (use `localhost` if running on the same machine):
+
+```json
+{
+  "mcpServers": {
+    "meticulous": {
+      "url": "http://<HOST_IP>:8080/mcp"
+    }
+  }
+}
+```
+
+### Option 2: Docker Exec (Local Only)
+If the Docker container is running on the **same machine** as Claude Desktop, you can use the direct `docker exec` method. This communicates via standard input/output (stdio).
 
 ```json
 {
@@ -50,12 +68,13 @@ To use this with Claude Desktop, add the following to your `claude_desktop_confi
         "-i",
         "meticulous-mcp-server",
         "python",
-        "run_http.py"
+        "meticulous-mcp/run_server.py"
       ]
     }
   }
 }
 ```
+*Note: This assumes the container name is `meticulous-mcp-server` (default in docker-compose.yml).*
 
 ## Troubleshooting
 
