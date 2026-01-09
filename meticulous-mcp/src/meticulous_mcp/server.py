@@ -53,44 +53,50 @@ mcp = FastMCP("Meticulous Espresso Profile Server")
 # Global instances
 _api_client: Optional[MeticulousAPIClient] = None
 _validator: Optional[ProfileValidator] = None
+_schema_path: Optional[Path] = None
+_rfc_path: Optional[Path] = None
 
 
 def _ensure_initialized() -> None:
     """Ensure server is initialized."""
-    global _api_client, _validator
+    global _api_client, _validator, _schema_path, _rfc_path
     if _api_client is None or _validator is None:
         # Initialize on first use
         base_url = os.getenv("METICULOUS_API_URL", "http://meticulousmodelalmondmilklatte.local")
         _api_client = MeticulousAPIClient(base_url=base_url)
         
-        # Find schema file
-        possible_paths = []
+        # Find schema directory
+        possible_dirs = []
         
-        # 1. Check env var
-        env_schema_path = os.getenv("METICULOUS_SCHEMA_PATH")
-        if env_schema_path:
-            possible_paths.append(Path(env_schema_path))
+        # 1. Check standard Docker path (where Dockerfile clones it)
+        possible_dirs.append(Path("/app/espresso-profile-schema"))
+        
+        # 2. Check env var
+        env_schema_dir = os.getenv("METICULOUS_SCHEMA_DIR")
+        if env_schema_dir:
+            possible_dirs.insert(0, Path(env_schema_dir))
 
-        # 2. Check standard Docker mount path
-        possible_paths.append(Path("/app/espresso-profile-schema/schema.json"))
-        
         # 3. Check relative paths (development/local)
         server_path = Path(__file__).resolve()
-        current_dir = server_path.parent.parent.parent
-        possible_paths.append(current_dir / "espresso-profile-schema" / "schema.json")
-        possible_paths.append(server_path.parent.parent.parent.parent / "espresso-profile-schema" / "schema.json")
+        # meticulous-mcp/src/meticulous_mcp/server.py -> meticulous-mcp/espresso-profile-schema
+        possible_dirs.append(server_path.parent.parent.parent / "espresso-profile-schema")
+        # meticulous-mcp/src/meticulous_mcp/server.py -> espresso-profile-schema (sibling of repo)
+        possible_dirs.append(server_path.parent.parent.parent.parent / "espresso-profile-schema")
         
-        schema_path = None
-        for p in possible_paths:
-            if p.exists():
-                schema_path = p
+        found_dir = None
+        for d in possible_dirs:
+            if (d / "schema.json").exists():
+                found_dir = d
                 break
         
-        # If still not found, fallback to the relative path so the validator can report the error with context
-        if schema_path is None:
-            schema_path = possible_paths[-1]
+        # Fallback to Docker path if nothing found (avoids crash before error reporting)
+        if found_dir is None:
+            found_dir = Path("/app/espresso-profile-schema")
+            
+        _schema_path = found_dir / "schema.json"
+        _rfc_path = found_dir / "rfc.md"
         
-        _validator = ProfileValidator(schema_path=str(schema_path))
+        _validator = ProfileValidator(schema_path=str(_schema_path))
         initialize_tools(_api_client, _validator)
 
 
@@ -741,11 +747,10 @@ def espresso_schema() -> str:
     """Get the profile schema reference."""
     _ensure_initialized()
     try:
-        schema_path = Path(__file__).parent.parent.parent / "espresso-profile-schema" / "schema.json"
-        if not schema_path.exists():
-            schema_path = Path(__file__).parent.parent.parent.parent / "espresso-profile-schema" / "schema.json"
-        
-        with open(schema_path, "r", encoding="utf-8") as f:
+        if not _schema_path or not _schema_path.exists():
+            return f"Error: Schema file not found at {_schema_path}"
+            
+        with open(_schema_path, "r", encoding="utf-8") as f:
             return json.dumps(json.load(f), indent=2)
     except Exception as e:
         return f"Error loading schema: {e}"
@@ -756,15 +761,10 @@ def espresso_rfc() -> str:
     """Get the Open Espresso Profile Format RFC document."""
     _ensure_initialized()
     try:
-        rfc_path = Path(__file__).parent.parent.parent / "espresso-profile-schema" / "rfc.md"
-        if not rfc_path.exists():
-            rfc_path = Path(__file__).parent.parent.parent.parent / "espresso-profile-schema" / "rfc.md"
-        
-        if not rfc_path.exists():
-            # Check standard Docker path as well
-            rfc_path = Path("/app/espresso-profile-schema/rfc.md")
+        if not _rfc_path or not _rfc_path.exists():
+            return f"Error: RFC file not found at {_rfc_path}"
 
-        with open(rfc_path, "r", encoding="utf-8") as f:
+        with open(_rfc_path, "r", encoding="utf-8") as f:
             return f.read()
     except Exception as e:
         return f"Error loading RFC: {e}"
